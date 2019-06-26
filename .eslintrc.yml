@@ -1,0 +1,190 @@
+parser: esprima
+parserOptions:
+  sourceType: module
+  ecmaFeatures:
+    classes: true
+    modules: true
+    blockBindings: true
+    forOf: true
+
+plugins:
+  - unicorn
+  - mocha-no-only
+  - import
+
+env:
+  node: true
+  es6: true
+  mocha: true
+
+rules:
+  # [Possible errors]
+  comma-dangle:
+    - error
+    - always-multiline
+  no-cond-assign: error
+  no-constant-condition: error
+  no-dupe-args: error
+  no-dupe-keys: error
+  no-duplicate-case: error
+  no-empty: warn
+  no-extra-boolean-cast: error
+  no-extra-semi: error
+  no-func-assign: error
+  no-inner-declarations: error
+  no-invalid-regexp: error
+  no-irregular-whitespace: error
+  no-negated-in-lhs: error
+  no-obj-calls: error
+  no-sparse-arrays: error
+  use-isnan: error
+  valid-typeof: error
+  no-unexpected-multiline: error
+  no-unreachable: warn
+
+  # [Best practices]
+  no-lone-blocks: warn
+  no-multi-spaces: error
+  no-native-reassign: error
+  no-new: warn
+  no-redeclare: error
+  no-self-compare: error
+  no-sequences: error
+  no-unused-expressions: error
+  no-with: error
+  wrap-iife: error
+  dot-notation:
+    - error
+    - allowKeywords: true
+  no-eval: error
+  no-alert: warn
+  eqeqeq:
+    - error
+    - allow-null
+  curly:
+    - error
+    - all
+
+  # [Variables]
+  no-shadow-restricted-names: error
+  no-shadow: error
+  no-undef-init: error
+  no-undef: error
+  no-undefined: warn
+  no-unused-vars: warn
+  no-use-before-define: error
+
+  # Stylistic issues
+  array-bracket-spacing:
+    - error
+    - never
+  # block-spacing:
+  #  - error
+  #  - always
+  brace-style:
+    - error
+    - 1tbs
+    - allowSingleLine: true
+  # camelcase:
+  #   - warn
+  #   - properties: never
+  comma-spacing:
+    - error
+    - before: false
+      after: true
+  comma-style:
+    - error
+    - last
+  computed-property-spacing:
+    - error
+    - never
+  eol-last: error
+  # func-style:
+  #  - error
+  #  - declaration
+  # indent:
+  #   - warn
+  #   - 2
+  #   - MemberExpression: 0
+  #     flatTernaryExpressions: true
+  #     ignoredNodes:
+  #       - ConditionalExpression
+  key-spacing:
+    - error
+    - beforeColon: false
+      afterColon: true
+  # linebreak-style:
+  #   - error
+  #   - unix
+  new-cap:
+    - error
+    - capIsNew: false
+  new-parens: error
+  no-mixed-spaces-and-tabs: error
+  no-new-object: error
+  no-spaced-func: error
+  no-trailing-spaces: error
+  no-unneeded-ternary: error
+  object-curly-spacing:
+    - error
+    - always
+  one-var:
+    - error
+    - never
+  operator-assignment:
+    - warn
+    - always
+  operator-linebreak:
+    - error
+    - before
+  # padded-blocks:
+  #   - warn
+  #   - never
+  quotes:
+    - warn
+    - single
+  quote-props:
+    - error
+    - as-needed
+    - keywords: true
+  semi: error
+  semi-spacing:
+    - error
+    - before: false
+      after: true
+  space-before-blocks:
+    - error
+    - always
+  keyword-spacing: error
+  space-before-function-paren:
+    - error
+    - never
+  space-in-parens:
+    - error
+    - never
+  space-infix-ops: error
+  space-unary-ops: error
+
+  # [ES6]
+  arrow-parens:
+    - error
+    - always
+  arrow-spacing:
+    - error
+    - before: true
+      after: true
+  constructor-super: error
+  no-class-assign: error
+  no-const-assign: error
+  no-dupe-class-members: error
+  no-this-before-super: warn
+  no-var: error
+  # object-shorthand: error
+  # prefer-arrow-callback: error
+  # prefer-const: warn
+  prefer-spread: warn
+  # prefer-template: error
+  unicorn/no-abusive-eslint-disable: error
+
+  # [mocha]
+  mocha-no-only/mocha-no-only: error
