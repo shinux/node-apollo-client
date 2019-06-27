@@ -34,19 +34,20 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
-exports.__esModule = true;
+Object.defineProperty(exports, "__esModule", { value: true });
 var Bluebird = require("bluebird");
 var _ = require("lodash");
 var request = require("request");
-Bluebird.promisifyAll(request);
+var requestGetAsync = Bluebird.promisifyAll(request);
 var Apollo = /** @class */ (function () {
     function Apollo(appInfo) {
+        var _this = this;
         this.defaultCluster = "default";
         this.defaultNamespace = "application";
         this.logger = (function () {
             return {
                 error: function (msg) { return console.log("Apollo-client Error: " + msg); },
-                info: function (msg) { return console.log("Apollo-client Info: msg"); }
+                info: function (msg) { return console.log("Apollo-client Info: msg"); },
             };
         })();
         this.configServerUrl = _.get(appInfo, "configServerUrl");
@@ -62,7 +63,7 @@ var Apollo = /** @class */ (function () {
         // high real-time capability
         // long polling which listening on Apollo server's notifications.
         if (this.listenOnNotification && this.notifications) {
-            setTimeout(this.startListenOnNotification(), 1e4);
+            setTimeout(function () { return _this.startListenOnNotification(); }, 1e4);
         }
         // low-level real-time capability
         // fetch cached configs from Apollo server
@@ -134,7 +135,7 @@ var Apollo = /** @class */ (function () {
             _this.notifications[key] = 0;
         });
         this.namespaces.forEach(function (key) {
-            _this.releaseKeys[key] = null;
+            _this.releaseKeys[key] = "";
         });
     };
     /**
@@ -148,7 +149,7 @@ var Apollo = /** @class */ (function () {
      */
     Apollo.prototype.startListenOnNotification = function (retryTimes) {
         if (retryTimes === void 0) { retryTimes = 0; }
-        return __awaiter(this, void 0, void 0, function () {
+        return __awaiter(this, void 0, Bluebird, function () {
             var _a, body, statusCode, needToRefetchedNamespaces_1;
             var _this = this;
             return __generator(this, function (_b) {
@@ -157,10 +158,10 @@ var Apollo = /** @class */ (function () {
                         if (!this.listenOnNotification) {
                             return [2 /*return*/];
                         }
-                        return [4 /*yield*/, request.getAsync({
+                        return [4 /*yield*/, requestGetAsync({
                                 json: true,
                                 timeout: 65,
-                                uri: this.configServerUrl + "/notifications/v2?\n        appId=" + this.appId + "&cluster=" + this.cluster + "&notifications={notifications}"
+                                uri: this.configServerUrl + "/notifications/v2?\n        appId=" + this.appId + "&cluster=" + this.cluster + "&notifications={notifications}",
                             })];
                     case 1:
                         _a = _b.sent(), body = _a.body, statusCode = _a.statusCode;
@@ -170,14 +171,12 @@ var Apollo = /** @class */ (function () {
                         }
                         if (!(body && statusCode === 200)) return [3 /*break*/, 3];
                         needToRefetchedNamespaces_1 = {};
-                        // 这里注意值的引用和修改，要做得干净点
                         body.forEach(function (remoteNotification) {
-                            var internalNotificationId = _.get(_this.notifications, remoteNotification.namespaceName, null);
+                            var internalNotificationId = _.get(_this.notifications, remoteNotification.namespaceName, 0);
                             if (internalNotificationId !== remoteNotification.notificationId) {
                                 needToRefetchedNamespaces_1[remoteNotification.namespaceName] = remoteNotification.notificationId;
                             }
                         });
-                        // 分别更新
                         return [4 /*yield*/, Bluebird.map(Object.keys(needToRefetchedNamespaces_1), function (namespace) { return __awaiter(_this, void 0, void 0, function () {
                                 return __generator(this, function (_a) {
                                     switch (_a.label) {
@@ -191,9 +190,7 @@ var Apollo = /** @class */ (function () {
                                 });
                             }); })];
                     case 2:
-                        // 分别更新
                         _b.sent();
-                        // 成功，并刷新重试次数为 0
                         return [2 /*return*/, this.startListenOnNotification(0)];
                     case 3:
                         this.logger.error("error on response");
@@ -221,9 +218,9 @@ var Apollo = /** @class */ (function () {
                         if (fromCache && this.releaseKeys[namespace]) {
                             uri += "?releaseKey=" + this.releaseKeys[namespace];
                         }
-                        return [4 /*yield*/, request.getAsync({
+                        return [4 /*yield*/, requestGetAsync({
                                 json: true,
-                                uri: uri
+                                uri: uri,
                             })];
                     case 1:
                         _a = _b.sent(), body = _a.body, statusCode = _a.statusCode;
@@ -308,4 +305,4 @@ var Apollo = /** @class */ (function () {
     };
     return Apollo;
 }());
-exports["default"] = Apollo;
+exports.default = Apollo;

@@ -2,7 +2,7 @@ import * as Bluebird from "bluebird";
 import * as _ from "lodash";
 import * as request from "request";
 
-Bluebird.promisifyAll(request);
+const requestGetAsync: any =  Bluebird.promisifyAll(request);
 
 interface IAppInfoProperties {
   configServerUrl: string;
@@ -30,7 +30,7 @@ class Apollo {
   public configServerUrl: string;
   public appId: string | number;
   public cluster: string;
-  public localCachedConfigs: object;
+  public localCachedConfigs: { [key: string]: object };
   public notifications: { [key: string]: number };
   public namespaces: string[];
   public releaseKeys: { [key: string]: string };
@@ -41,8 +41,8 @@ class Apollo {
   private defaultNamespace = "application";
   private logger = (() => {
     return {
-      error: (msg) => console.log(`Apollo-client Error: ${msg}`),
-      info: (msg) => console.log(`Apollo-client Info: msg`),
+      error: (msg: string) => console.log(`Apollo-client Error: ${msg}`),
+      info: (msg: string) => console.log(`Apollo-client Info: msg`),
     };
   })();
 
@@ -63,7 +63,7 @@ class Apollo {
     // high real-time capability
     // long polling which listening on Apollo server's notifications.
     if (this.listenOnNotification && this.notifications) {
-      setTimeout(this.startListenOnNotification(), 1e4);
+      setTimeout(() => this.startListenOnNotification(), 1e4);
     }
 
     // low-level real-time capability
@@ -133,7 +133,7 @@ class Apollo {
       this.notifications[key] = 0;
     });
     this.namespaces.forEach((key) => {
-      this.releaseKeys[key] = null;
+      this.releaseKeys[key] = "";
     });
 
   }
@@ -147,11 +147,11 @@ class Apollo {
    *
    * then repeat it self.
    */
-  private async startListenOnNotification(retryTimes: number = 0) {
+  private async startListenOnNotification(retryTimes: number = 0): Bluebird<any> {
     if (!this.listenOnNotification) {
       return;
     }
-    const { body, statusCode }: { body: INotificationResponseItem[], statusCode: number } = await request.getAsync({
+    const { body, statusCode }: { body: INotificationResponseItem[], statusCode: number } = await requestGetAsync({
       json: true,
       timeout: 65,
       uri: `${this.configServerUrl}/notifications/v2?
@@ -164,7 +164,7 @@ class Apollo {
     if (body && statusCode === 200) {
       const needToRefetchedNamespaces: { [key: string]: number } = {};
       body.forEach((remoteNotification) => {
-        const internalNotificationId: number = _.get(this.notifications, remoteNotification.namespaceName, null);
+        const internalNotificationId: number = _.get(this.notifications, remoteNotification.namespaceName, 0);
         if (internalNotificationId !== remoteNotification.notificationId) {
           needToRefetchedNamespaces[remoteNotification.namespaceName] = remoteNotification.notificationId;
         }
@@ -194,7 +194,7 @@ class Apollo {
     if (fromCache && this.releaseKeys[namespace]) {
       uri += `?releaseKey=${this.releaseKeys[namespace]}`;
     }
-    const { body, statusCode }: { body: IFetchConfigResponse, statusCode: number } = await request.getAsync({
+    const { body, statusCode }: { body: IFetchConfigResponse, statusCode: number } = await requestGetAsync({
       json: true,
       uri,
     });
@@ -239,7 +239,7 @@ class Apollo {
     }, { concurrency: 5 });
   }
 
-  private errorHandler(errorMessage) {
+  private errorHandler(errorMessage: string) {
     this.errorCount += 1;
     throw new Error(errorMessage);
   }
