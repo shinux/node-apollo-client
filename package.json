@@ -4,7 +4,8 @@
   "description": "node apollo client for Ctrip Apollo",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "tsc": "npx tsc"
   },
   "repository": {
     "type": "git",
@@ -17,15 +18,17 @@
   },
   "homepage": "https://github.com/shinux/node-apollo-client#readme",
   "dependencies": {
-    "bluebird": "^3.5.5",
-    "lodash": "^4.17.11",
-    "request": "^2.88.0"
+    "bluebird": "3.5.5",
+    "lodash": "4.17.11",
+    "request": "2.88.0"
   },
   "devDependencies": {
-    "eslint": "6.0.1",
-    "eslint-codeframe-formatter": "1.0.2",
-    "eslint-plugin-import": "2.8.0",
-    "eslint-plugin-mocha-no-only": "0.0.5",
-    "eslint-plugin-unicorn": "3.0.1"
+    "@types/bluebird": "^3.5.27",
+    "@types/lodash": "^4.14.135",
+    "@types/node": "^12.0.10",
+    "ts-node": "^8.3.0",
+    "tslib": "^1.10.0",
+    "tslint": "^5.18.0",
+    "typescript": "3.5.2"
   }
 }
