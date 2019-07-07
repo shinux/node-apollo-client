@@ -1,0 +1,30 @@
+version: 2.1
+
+jobs:
+  build:
+    working_directory: ~/node-apollo-client
+    docker:
+      - image: node:8.13-stretch
+        environment:
+          NODE_ENV: circleci # override the default value "test"
+
+    environment:
+      - TZ: "/usr/share/zoneinfo/Asia/Shanghai"
+
+    steps:
+      - checkout
+      - restore_cache:
+          key: dependency-cache-{{ checksum "package.json" }}
+      - run:
+          name: Install npm packages
+          command: test ! -d node_modules && npm install || echo "Skipped"
+      - save_cache:
+          key: dependency-cache-{{ checksum "package.json" }}
+          paths:
+            - node_modules
+      - run:
+          name: Set timezone
+          command: ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+      - run:
+          name: Test
+          command: npm run test
