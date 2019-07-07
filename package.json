@@ -2,17 +2,17 @@
   "name": "node-apollo-client",
   "version": "0.0.1",
   "description": "node apollo client for Ctrip Apollo",
-  "main": "index.js",
+  "main": "./dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "mocha --timeout 10000",
     "tsc": "npx tsc"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shinux/node-apollo-client.git"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "sinux",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/shinux/node-apollo-client/issues"
   },
@@ -27,6 +27,8 @@
     "@types/lodash": "^4.14.135",
     "@types/node": "^12.0.10",
     "@types/request": "^2.48.1",
+    "mocha": "^6.1.4",
+    "nock": "^10.0.6",
     "ts-node": "^8.3.0",
     "tslib": "^1.10.0",
     "tslint": "^5.18.0",

@@ -38,9 +38,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var Bluebird = require("bluebird");
 var _ = require("lodash");
 var request = require("request");
-var requestGetAsync = Bluebird.promisifyAll(request);
+var requestAsync = Bluebird.promisifyAll(request);
+function sleep(ms) {
+    return new Bluebird(function (resolve) {
+        setTimeout(resolve, ms);
+    });
+}
 var Apollo = /** @class */ (function () {
     function Apollo(appInfo) {
+        var _a;
         var _this = this;
         this.defaultCluster = "default";
         this.defaultNamespace = "application";
@@ -59,18 +65,22 @@ var Apollo = /** @class */ (function () {
         this.releaseKeys = {};
         this.listenOnNotification = _.get(appInfo, "listenOnNotification", true);
         this.errorCount = 0;
-        this.initializeWithConfigs(appInfo.initialConfigs);
+        this.initializeWithConfigs(_.get(appInfo, "initialConfigs", (_a = {}, _a[this.defaultNamespace] = {}, _a)));
+        if (!this.configServerUrl || !this.appId) {
+            this.errorHandler("configServerUrl and appId are required");
+            return;
+        }
         // high real-time capability
         // long polling which listening on Apollo server's notifications.
         if (this.listenOnNotification && this.notifications) {
-            setTimeout(function () { return _this.startListenOnNotification(); }, 1e4);
+            setTimeout(function () { return _this.startListenOnNotification(); }, 10e3);
         }
         // low-level real-time capability
         // fetch cached configs from Apollo server
         // fetch once immediately
         this.fetchKnownNamespace();
         // then fetch every 5 minutes
-        setInterval(this.fetchKnownNamespace, 5 * 6e4);
+        setInterval(this.fetchKnownNamespace, 5 * 60e3);
     }
     /**
      * fetch single config.
@@ -97,8 +107,8 @@ var Apollo = /** @class */ (function () {
      * @param {String} namespace
      * @param {Object} configs
      */
-    Apollo.prototype.refreshConfigs = function (namespace, configs) {
-        if (namespace === void 0) { namespace = "application"; }
+    Apollo.prototype.refreshConfigs = function (_a) {
+        var configs = _a.configs, _b = _a.namespace, namespace = _b === void 0 ? "application" : _b;
         try {
             if (!namespace || !this.namespaces.includes(namespace)) {
                 throw new Error("no such namespace");
@@ -106,7 +116,7 @@ var Apollo = /** @class */ (function () {
             this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], configs);
             return true;
         }
-        catch (_a) {
+        catch (err) {
             return false;
         }
     };
@@ -150,26 +160,34 @@ var Apollo = /** @class */ (function () {
     Apollo.prototype.startListenOnNotification = function (retryTimes) {
         if (retryTimes === void 0) { retryTimes = 0; }
         return __awaiter(this, void 0, Bluebird, function () {
-            var _a, body, statusCode, needToRefetchedNamespaces_1;
+            var response, body, statusCode, needToRefetchedNamespaces_1, err_1;
             var _this = this;
-            return __generator(this, function (_b) {
-                switch (_b.label) {
+            return __generator(this, function (_a) {
+                switch (_a.label) {
                     case 0:
                         if (!this.listenOnNotification) {
                             return [2 /*return*/];
                         }
-                        return [4 /*yield*/, requestGetAsync({
+                        if (!(retryTimes > 0)) return [3 /*break*/, 2];
+                        return [4 /*yield*/, sleep(10e3)];
+                    case 1:
+                        _a.sent();
+                        _a.label = 2;
+                    case 2:
+                        _a.trys.push([2, 6, , 7]);
+                        return [4 /*yield*/, requestAsync.getAsync({
                                 json: true,
                                 timeout: 65,
-                                uri: this.configServerUrl + "/notifications/v2?\n        appId=" + this.appId + "&cluster=" + this.cluster + "&notifications={notifications}",
+                                uri: this.configServerUrl + "/notifications/v2?\n          appId=" + this.appId + "&cluster=" + this.cluster + "&notifications={notifications}",
                             })];
-                    case 1:
-                        _a = _b.sent(), body = _a.body, statusCode = _a.statusCode;
+                    case 3:
+                        response = _a.sent();
+                        body = response.body, statusCode = response.statusCode;
                         if (statusCode === 304) {
                             // nothing updated, won't update.
                             return [2 /*return*/, this.startListenOnNotification(0)];
                         }
-                        if (!(body && statusCode === 200)) return [3 /*break*/, 3];
+                        if (!(body && statusCode === 200)) return [3 /*break*/, 5];
                         needToRefetchedNamespaces_1 = {};
                         body.forEach(function (remoteNotification) {
                             var internalNotificationId = _.get(_this.notifications, remoteNotification.namespaceName, 0);
@@ -189,41 +207,69 @@ var Apollo = /** @class */ (function () {
                                     }
                                 });
                             }); })];
-                    case 2:
-                        _b.sent();
+                    case 4:
+                        _a.sent();
                         return [2 /*return*/, this.startListenOnNotification(0)];
-                    case 3:
-                        this.logger.error("error on response");
+                    case 5: throw new Error();
+                    case 6:
+                        err_1 = _a.sent();
+                        this.logger.error("error on notificaiotn response");
                         return [2 /*return*/, this.startListenOnNotification(retryTimes += 1)];
+                    case 7: return [2 /*return*/];
                 }
             });
         });
     };
     /**
-     * main config fetcher calls.
-     *
-     * request Apollo's configfiles API
-     *
-     * @param {String} namespace
-     * @param {Boolean} fromCache - true: fetch from Apollo's Redis /false: fetch from Apollo's MySQL
+     * fetch from Apollo's Redis
      */
-    Apollo.prototype.commonConfigFetchAndHandler = function (namespace, fromCache) {
-        if (fromCache === void 0) { fromCache = true; }
+    Apollo.prototype.fetchConfigsFromCache = function (namespace) {
+        if (namespace === void 0) { namespace = "application"; }
         return __awaiter(this, void 0, void 0, function () {
-            var uri, _a, body, statusCode;
-            return __generator(this, function (_b) {
-                switch (_b.label) {
+            var uri, response, body, statusCode;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
                     case 0:
                         uri = this.configServerUrl + "/configfiles/json/" + this.appId + "/" + this.cluster + "/" + namespace;
-                        if (fromCache && this.releaseKeys[namespace]) {
-                            uri += "?releaseKey=" + this.releaseKeys[namespace];
-                        }
-                        return [4 /*yield*/, requestGetAsync({
+                        return [4 /*yield*/, requestAsync.getAsync({
                                 json: true,
                                 uri: uri,
                             })];
                     case 1:
-                        _a = _b.sent(), body = _a.body, statusCode = _a.statusCode;
+                        response = _a.sent();
+                        body = response.body, statusCode = response.statusCode;
+                        if (!body || statusCode > 200) {
+                            return [2 /*return*/, this.errorHandler("error on fetching configs from cache")];
+                        }
+                        if (body && typeof body === "object") {
+                            this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], body);
+                        }
+                        return [2 /*return*/];
+                }
+            });
+        });
+    };
+    /**
+     * fetch from Apollo's MySQL
+     */
+    Apollo.prototype.fetchConfigsFromDB = function (namespace) {
+        if (namespace === void 0) { namespace = "application"; }
+        return __awaiter(this, void 0, void 0, function () {
+            var uri, response, body, statusCode;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        uri = this.configServerUrl + "/configs/" + this.appId + "/" + this.cluster + "/" + namespace;
+                        if (this.releaseKeys[namespace]) {
+                            uri += "?releaseKey=" + this.releaseKeys[namespace];
+                        }
+                        return [4 /*yield*/, requestAsync.getAsync({
+                                json: true,
+                                uri: uri,
+                            })];
+                    case 1:
+                        response = _a.sent();
+                        body = response.body, statusCode = response.statusCode;
                         if (statusCode === 304) {
                             // nothing updated, won't update.
                             return [2 /*return*/];
@@ -243,31 +289,9 @@ var Apollo = /** @class */ (function () {
                             }
                         }
                         else {
-                            this.logger.error("mismatch fetching configs " + this.cluster + "-" + namespace);
+                            this.errorHandler("mismatch fetching configs " + this.cluster + "-" + namespace);
                         }
                         return [2 /*return*/];
-                }
-            });
-        });
-    };
-    Apollo.prototype.fetchConfigsFromCache = function (namespace) {
-        if (namespace === void 0) { namespace = "application"; }
-        return __awaiter(this, void 0, void 0, function () {
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0: return [4 /*yield*/, this.commonConfigFetchAndHandler(namespace)];
-                    case 1: return [2 /*return*/, _a.sent()];
-                }
-            });
-        });
-    };
-    Apollo.prototype.fetchConfigsFromDB = function (namespace) {
-        if (namespace === void 0) { namespace = "application"; }
-        return __awaiter(this, void 0, void 0, function () {
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0: return [4 /*yield*/, this.commonConfigFetchAndHandler(namespace, false)];
-                    case 1: return [2 /*return*/, _a.sent()];
                 }
             });
         });
@@ -301,8 +325,9 @@ var Apollo = /** @class */ (function () {
     };
     Apollo.prototype.errorHandler = function (errorMessage) {
         this.errorCount += 1;
+        this.logger.error(errorMessage);
         throw new Error(errorMessage);
     };
     return Apollo;
 }());
-exports.default = Apollo;
+module.exports = Apollo;

@@ -2,7 +2,7 @@ import * as Bluebird from "bluebird";
 import * as _ from "lodash";
 import * as request from "request";
 
-const requestGetAsync: any =  Bluebird.promisifyAll(request);
+const requestAsync: any = Bluebird.promisifyAll(request);
 
 interface IAppInfoProperties {
   configServerUrl: string;
@@ -24,6 +24,12 @@ interface INotificationResponseItem {
   namespaceName: string;
   notificationId: number;
   messages?: object;
+}
+
+function sleep(ms: number) {
+  return new Bluebird((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 class Apollo {
@@ -58,12 +64,17 @@ class Apollo {
     this.listenOnNotification = _.get(appInfo, "listenOnNotification", true);
     this.errorCount = 0;
 
-    this.initializeWithConfigs(appInfo.initialConfigs);
+    this.initializeWithConfigs(_.get(appInfo, "initialConfigs", { [this.defaultNamespace]: {} }));
+
+    if (!this.configServerUrl || !this.appId) {
+      this.errorHandler("configServerUrl and appId are required");
+      return;
+    }
 
     // high real-time capability
     // long polling which listening on Apollo server's notifications.
     if (this.listenOnNotification && this.notifications) {
-      setTimeout(() => this.startListenOnNotification(), 1e4);
+      setTimeout(() => this.startListenOnNotification(), 10e3);
     }
 
     // low-level real-time capability
@@ -71,7 +82,7 @@ class Apollo {
     // fetch once immediately
     this.fetchKnownNamespace();
     // then fetch every 5 minutes
-    setInterval(this.fetchKnownNamespace, 5 * 6e4);
+    setInterval(this.fetchKnownNamespace, 5 * 60e3);
   }
 
   /**
@@ -99,14 +110,14 @@ class Apollo {
    * @param {String} namespace
    * @param {Object} configs
    */
-  public refreshConfigs(namespace: string = "application", configs: object) {
+  public refreshConfigs({ configs, namespace = "application" }: { configs: object, namespace: string }): boolean {
     try {
       if (!namespace || !this.namespaces.includes(namespace)) {
         throw new Error("no such namespace");
       }
       this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], configs);
       return true;
-    } catch {
+    } catch (err) {
       return false;
     }
   }
@@ -151,53 +162,77 @@ class Apollo {
     if (!this.listenOnNotification) {
       return;
     }
-    const { body, statusCode }: { body: INotificationResponseItem[], statusCode: number } = await requestGetAsync({
-      json: true,
-      timeout: 65,
-      uri: `${this.configServerUrl}/notifications/v2?
-        appId=${this.appId}&cluster=${this.cluster}&notifications={notifications}`,
-    });
-    if (statusCode === 304) {
-      // nothing updated, won't update.
-      return this.startListenOnNotification(0);
+    // delay 10 seonds after failure
+    if (retryTimes > 0) {
+      await sleep(10e3);
     }
-    if (body && statusCode === 200) {
-      const needToRefetchedNamespaces: { [key: string]: number } = {};
-      body.forEach((remoteNotification) => {
-        const internalNotificationId: number = _.get(this.notifications, remoteNotification.namespaceName, 0);
-        if (internalNotificationId !== remoteNotification.notificationId) {
-          needToRefetchedNamespaces[remoteNotification.namespaceName] = remoteNotification.notificationId;
-        }
+    try {
+      const response
+        : { body: INotificationResponseItem[], statusCode: number } = await requestAsync.getAsync({
+        json: true,
+        timeout: 65,
+        uri: `${this.configServerUrl}/notifications/v2?
+          appId=${this.appId}&cluster=${this.cluster}&notifications={notifications}`,
       });
-      await Bluebird.map(Object.keys(needToRefetchedNamespaces), async (namespace) => {
-        await this.fetchConfigsFromDB(namespace);
-        // update notification is after fetching and updating configs successfully.
-        this.notifications[namespace] = needToRefetchedNamespaces[namespace];
-      });
+      const { body, statusCode } = response;
+      if (statusCode === 304) {
+        // nothing updated, won't update.
+        return this.startListenOnNotification(0);
+      }
+      if (body && statusCode === 200) {
+        const needToRefetchedNamespaces: { [key: string]: number } = {};
+        body.forEach((remoteNotification) => {
+          const internalNotificationId: number = _.get(this.notifications, remoteNotification.namespaceName, 0);
+          if (internalNotificationId !== remoteNotification.notificationId) {
+            needToRefetchedNamespaces[remoteNotification.namespaceName] = remoteNotification.notificationId;
+          }
+        });
+        await Bluebird.map(Object.keys(needToRefetchedNamespaces), async (namespace) => {
+          await this.fetchConfigsFromDB(namespace);
+          // update notification is after fetching and updating configs successfully.
+          this.notifications[namespace] = needToRefetchedNamespaces[namespace];
+        });
 
-      return this.startListenOnNotification(0);
+        return this.startListenOnNotification(0);
+      }
+      throw new Error();
+    } catch (err) {
+      this.logger.error("error on notificaiotn response");
+      return this.startListenOnNotification(retryTimes += 1);
     }
-    this.logger.error("error on response");
-    return this.startListenOnNotification(retryTimes += 1);
   }
 
   /**
-   * main config fetcher calls.
-   *
-   * request Apollo's configfiles API
-   *
-   * @param {String} namespace
-   * @param {Boolean} fromCache - true: fetch from Apollo's Redis /false: fetch from Apollo's MySQL
+   * fetch from Apollo's Redis
    */
-  private async commonConfigFetchAndHandler(namespace: string, fromCache: boolean = true) {
-    let uri: string = `${this.configServerUrl}/configfiles/json/${this.appId}/${this.cluster}/${namespace}`;
-    if (fromCache && this.releaseKeys[namespace]) {
-      uri += `?releaseKey=${this.releaseKeys[namespace]}`;
-    }
-    const { body, statusCode }: { body: IFetchConfigResponse, statusCode: number } = await requestGetAsync({
+  private async fetchConfigsFromCache(namespace: string = "application") {
+    const uri: string = `${this.configServerUrl}/configfiles/json/${this.appId}/${this.cluster}/${namespace}`;
+    const response: { body: object, statusCode: number } = await requestAsync.getAsync({
       json: true,
       uri,
     });
+    const { body, statusCode } = response;
+    if (!body || statusCode > 200) {
+      return this.errorHandler("error on fetching configs from cache");
+    }
+    if (body && typeof body === "object") {
+      this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], body);
+    }
+  }
+
+  /**
+   * fetch from Apollo's MySQL
+   */
+  private async fetchConfigsFromDB(namespace: string = "application") {
+    let uri: string = `${this.configServerUrl}/configs/${this.appId}/${this.cluster}/${namespace}`;
+    if (this.releaseKeys[namespace]) {
+      uri += `?releaseKey=${this.releaseKeys[namespace]}`;
+    }
+    const response: { body: IFetchConfigResponse, statusCode: number } = await requestAsync.getAsync({
+      json: true,
+      uri,
+    });
+    const { body, statusCode } = response;
     if (statusCode === 304) {
       // nothing updated, won't update.
       return;
@@ -206,6 +241,7 @@ class Apollo {
       // TODO: retry ?
       this.logger.error("error on response");
     }
+
     if (body.appId === this.appId
       && body.cluster === this.cluster
       && body.namespaceName === namespace) {
@@ -216,16 +252,8 @@ class Apollo {
         this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], body.configurations);
       }
     } else {
-      this.logger.error(`mismatch fetching configs ${this.cluster}-${namespace}`);
+      this.errorHandler(`mismatch fetching configs ${this.cluster}-${namespace}`);
     }
-  }
-
-  private async fetchConfigsFromCache(namespace: string = "application") {
-    return await this.commonConfigFetchAndHandler(namespace);
-  }
-
-  private async fetchConfigsFromDB(namespace: string = "application") {
-    return await this.commonConfigFetchAndHandler(namespace, false);
   }
 
   /**
@@ -241,8 +269,9 @@ class Apollo {
 
   private errorHandler(errorMessage: string) {
     this.errorCount += 1;
+    this.logger.error(errorMessage);
     throw new Error(errorMessage);
   }
 }
 
-export default Apollo;
+module.exports = Apollo;
