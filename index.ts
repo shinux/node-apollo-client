@@ -95,7 +95,7 @@ class Apollo {
   /**
    * fetch multiple configs.
    */
-  public fetchConfigs({ keys, namespace = "application" }: { keys: string[], namespace?: string }): object {
+  public fetchConfigs({ keys, namespace = "application" }: { keys: string[], namespace?: string }): any {
     if (!_.isArray(keys)) {
       this.errorHandler("kyes should be array type");
     }
