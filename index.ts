@@ -103,9 +103,9 @@ class Apollo {
   }
 
   /**
-   * refresh specific namepace's config partially or all
+   * refresh specific namepace's config partially or completely
    *
-   * NOTICE: this method will directly merge new configs with exit and do no checks.
+   * NOTICE: this method will directly merge new configs with exist and do no checks.
    *
    * @param {String} namespace
    * @param {Object} configs
@@ -125,7 +125,7 @@ class Apollo {
   /**
    * this function born to do some initialization operations.
    *
-   * i. maintain configs which passed in by constructor.
+   * i. maintain configs that passed in by constructor.
    * ii. set namespaces property.
    * iii. initialize notifications.
    * iv. initialize releaseKeys.
@@ -151,7 +151,7 @@ class Apollo {
 
   /**
    * Long polling method
-   * it recursively requests Apollo server's notification API
+   * recursively requests Apollo server's notification API
    * hangs 60 seconds to simulate an keep-alive connection.
    * if any response get back, it compares result, basically notificationId with local
    * depends on which it fetch latest version of configs directly from Apollo DB
