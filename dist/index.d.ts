@@ -4,11 +4,11 @@ export = Apollo;
 
 declare class Apollo {
     constructor(appInfo: {
+      configServerUrl: string;
       appId: string | number;
-      cluster: string;
-      namespaceName: string;
-      releaseKey?: string;
-      configurations: object;
+      cluster?: string;
+      listenOnNotification?: boolean;
+      initialConfigs: { [key: string]: object };
     });
 
     public fetchConfig({ key, namespace }: { key: string, namespace?: string }): any;
