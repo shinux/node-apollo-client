@@ -53,7 +53,7 @@ var Apollo = /** @class */ (function () {
         this.logger = (function () {
             return {
                 error: function (msg) { return console.log("Apollo-client Error: " + msg); },
-                info: function (msg) { return console.log("Apollo-client Info: msg"); },
+                info: function (msg) { return console.log("Apollo-client Info: " + msg); },
             };
         })();
         this.configServerUrl = _.get(appInfo, "configServerUrl");
@@ -78,9 +78,9 @@ var Apollo = /** @class */ (function () {
         // low-level real-time capability
         // fetch cached configs from Apollo server
         // fetch once immediately
-        this.fetchKnownNamespace();
+        this.fetchKnownNamespaceFromDB();
         // then fetch every 5 minutes
-        setInterval(this.fetchKnownNamespace, 5 * 60e3);
+        setInterval(this.fetchKnownNamespaceFromCache, 5 * 60e3);
     }
     /**
      * fetch single config.
@@ -100,9 +100,9 @@ var Apollo = /** @class */ (function () {
         return _.pick(_.get(this.localCachedConfigs, "" + namespace, {}), keys);
     };
     /**
-     * refresh specific namepace's config partially or all
+     * refresh specific namepace's config partially or completely
      *
-     * NOTICE: this method will directly merge new configs with exit and do no checks.
+     * NOTICE: this method will directly merge new configs with exist and do no checks.
      *
      * @param {String} namespace
      * @param {Object} configs
@@ -123,7 +123,7 @@ var Apollo = /** @class */ (function () {
     /**
      * this function born to do some initialization operations.
      *
-     * i. maintain configs which passed in by constructor.
+     * i. maintain configs that passed in by constructor.
      * ii. set namespaces property.
      * iii. initialize notifications.
      * iv. initialize releaseKeys.
@@ -150,7 +150,7 @@ var Apollo = /** @class */ (function () {
     };
     /**
      * Long polling method
-     * it recursively requests Apollo server's notification API
+     * recursively requests Apollo server's notification API
      * hangs 60 seconds to simulate an keep-alive connection.
      * if any response get back, it compares result, basically notificationId with local
      * depends on which it fetch latest version of configs directly from Apollo DB
@@ -160,7 +160,7 @@ var Apollo = /** @class */ (function () {
     Apollo.prototype.startListenOnNotification = function (retryTimes) {
         if (retryTimes === void 0) { retryTimes = 0; }
         return __awaiter(this, void 0, Bluebird, function () {
-            var response, body, statusCode, needToRefetchedNamespaces_1, err_1;
+            var notificationsForApollo, response, body, statusCode, needToRefetchedNamespaces_1, err_1;
             var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
@@ -175,10 +175,13 @@ var Apollo = /** @class */ (function () {
                         _a.label = 2;
                     case 2:
                         _a.trys.push([2, 6, , 7]);
+                        notificationsForApollo = Object.keys(this.notifications).map(function (namespace) {
+                            return { namespaceName: namespace, notificationId: _this.notifications[namespace] };
+                        });
                         return [4 /*yield*/, requestAsync.getAsync({
                                 json: true,
                                 timeout: 65,
-                                uri: this.configServerUrl + "/notifications/v2?\n          appId=" + this.appId + "&cluster=" + this.cluster + "&notifications={notifications}",
+                                uri: this.configServerUrl + "/notifications/v2?\n          appId=" + this.appId + "&cluster=" + this.cluster + "&notifications=" + notificationsForApollo,
                             })];
                     case 3:
                         response = _a.sent();
@@ -301,7 +304,7 @@ var Apollo = /** @class */ (function () {
      *
      * concurrency: 5.
      */
-    Apollo.prototype.fetchKnownNamespace = function () {
+    Apollo.prototype.fetchKnownNamespaceFromCache = function () {
         return __awaiter(this, void 0, void 0, function () {
             var _this = this;
             return __generator(this, function (_a) {
@@ -310,6 +313,33 @@ var Apollo = /** @class */ (function () {
                             return __generator(this, function (_a) {
                                 switch (_a.label) {
                                     case 0: return [4 /*yield*/, this.fetchConfigsFromCache(namespace)];
+                                    case 1:
+                                        _a.sent();
+                                        return [2 /*return*/];
+                                }
+                            });
+                        }); }, { concurrency: 5 })];
+                    case 1:
+                        _a.sent();
+                        return [2 /*return*/];
+                }
+            });
+        });
+    };
+    /**
+     * fetch all config from DB at once.
+     *
+     * concurrency: 5.
+     */
+    Apollo.prototype.fetchKnownNamespaceFromDB = function () {
+        return __awaiter(this, void 0, void 0, function () {
+            var _this = this;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4 /*yield*/, Bluebird.map(this.namespaces, function (namespace) { return __awaiter(_this, void 0, void 0, function () {
+                            return __generator(this, function (_a) {
+                                switch (_a.label) {
+                                    case 0: return [4 /*yield*/, this.fetchConfigsFromDB(namespace)];
                                     case 1:
                                         _a.sent();
                                         return [2 /*return*/];
