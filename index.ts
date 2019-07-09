@@ -48,7 +48,7 @@ class Apollo {
   private logger = (() => {
     return {
       error: (msg: string) => console.log(`Apollo-client Error: ${msg}`),
-      info: (msg: string) => console.log(`Apollo-client Info: msg`),
+      info: (msg: string) => console.log(`Apollo-client Info: ${msg}`),
     };
   })();
 
@@ -80,9 +80,9 @@ class Apollo {
     // low-level real-time capability
     // fetch cached configs from Apollo server
     // fetch once immediately
-    this.fetchKnownNamespace();
+    this.fetchKnownNamespaceFromDB();
     // then fetch every 5 minutes
-    setInterval(this.fetchKnownNamespace, 5 * 60e3);
+    setInterval(this.fetchKnownNamespaceFromCache, 5 * 60e3);
   }
 
   /**
@@ -167,12 +167,15 @@ class Apollo {
       await sleep(10e3);
     }
     try {
+      const notificationsForApollo = Object.keys(this.notifications).map((namespace) => {
+        return { namespaceName: namespace, notificationId: this.notifications[namespace] };
+      });
       const response
         : { body: INotificationResponseItem[], statusCode: number } = await requestAsync.getAsync({
         json: true,
         timeout: 65,
         uri: `${this.configServerUrl}/notifications/v2?
-          appId=${this.appId}&cluster=${this.cluster}&notifications={notifications}`,
+          appId=${this.appId}&cluster=${this.cluster}&notifications=${notificationsForApollo}`,
       });
       const { body, statusCode } = response;
       if (statusCode === 304) {
@@ -261,9 +264,20 @@ class Apollo {
    *
    * concurrency: 5.
    */
-  private async fetchKnownNamespace() {
+  private async fetchKnownNamespaceFromCache() {
     await Bluebird.map(this.namespaces, async (namespace) => {
       await this.fetchConfigsFromCache(namespace);
+    }, { concurrency: 5 });
+  }
+
+  /**
+   * fetch all config from DB at once.
+   *
+   * concurrency: 5.
+   */
+  private async fetchKnownNamespaceFromDB() {
+    await Bluebird.map(this.namespaces, async (namespace) => {
+      await this.fetchConfigsFromDB(namespace);
     }, { concurrency: 5 });
   }
 

@@ -23,7 +23,9 @@ declare class Apollo {
 
     private fetchConfigsFromDB(namespace: any): any;
 
-    private fetchKnownNamespace(): any;
+    private fetchKnownNamespaceFromDB(): any;
+
+    private fetchKnownNamespaceFromCache(): any;
 
     private initializeWithConfigs(currentConfigs: any): void;
 
