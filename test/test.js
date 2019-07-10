@@ -17,10 +17,25 @@ describe('test apollo', () => {
 
   beforeEach(async() => {
     nock.cleanAll();
+
     nock(`${configServerUrl}`)
     .persist()
     .get(`/configfiles/json/${appId}/default/application`)
     .reply(200, { test: false });
+
+
+    nock(`${configServerUrl}`)
+    .persist()
+    .get(`/configs/${appId}/default/application`)
+    .reply(200, {
+      appId,
+      cluster: 'default',
+      namespaceName: 'application',
+      configurations: {
+        test: false,
+      },
+      releseKey: '20xxxx',
+    });
 
     nock(`${configServerUrl}`)
     .persist()
