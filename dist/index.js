@@ -35,39 +35,55 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+var fs = require("fs");
 var Bluebird = require("bluebird");
 var _ = require("lodash");
 var request = require("request");
 var requestAsync = Bluebird.promisifyAll(request);
+var fsAsync = Bluebird.promisifyAll(fs);
 function sleep(ms) {
     return new Bluebird(function (resolve) {
         setTimeout(resolve, ms);
     });
 }
+/**
+ * i. save and read local cached config file from `cachedConfigFilePath`
+ * ii. fetch Apollo config from DB at once
+ * iii. fetch Apollo config from cache periodically
+ * iv. subscribe notificatin by long polling which simulate keep alive connection
+ * v. everytime new config get back, update local cached file.
+ */
 var Apollo = /** @class */ (function () {
     function Apollo(appInfo) {
         var _a;
         var _this = this;
         this.defaultCluster = "default";
         this.defaultNamespace = "application";
-        this.logger = (function () {
-            return {
-                error: function (msg) { return console.log("Apollo-client Error: " + msg); },
-                info: function (msg) { return console.log("Apollo-client Info: " + msg); },
-            };
-        })();
-        this.configServerUrl = _.get(appInfo, "configServerUrl");
-        this.appId = _.get(appInfo, "appId");
+        this.cachedConfigFileNameSuffix = "nodeApolloCachedConfig.json";
+        this.logger = ["error", "info", "warn"].reduce(function (result, level) {
+            var levelFormater = level.charAt(0).toUpperCase() + level.slice(1);
+            result[level] = function (msg) { return console.log("[" + levelFormater + "] Apollo-client: " + msg); };
+            return result;
+        }, {});
+        this.configServerUrl = _.get(appInfo, "configServerUrl") || "";
+        this.appId = _.get(appInfo, "appId", "");
         this.cluster = _.get(appInfo, "cluster", this.defaultCluster);
-        this.localCachedConfigs = {};
+        this.cachedConfigFileName = this.appId + "-" + this.cachedConfigFileNameSuffix;
+        this.cachedConfigFilePath = _.get(appInfo, "cachedConfigFilePath", "/tmp/");
+        this.localCachedConfigs = _.get(appInfo, "initialConfigs", (_a = {}, _a[this.defaultNamespace] = {}, _a));
         this.notifications = {};
-        this.namespaces = [];
+        this.namespaces = new Set(_.get(appInfo, "namespaces", ["application"]));
+        this.fetchCacheInterval = _.get(appInfo, "fetchCacheInterval", 5 * 60e3);
         this.releaseKeys = {};
         this.listenOnNotification = _.get(appInfo, "listenOnNotification", true);
         this.errorCount = 0;
-        this.initializeWithConfigs(_.get(appInfo, "initialConfigs", (_a = {}, _a[this.defaultNamespace] = {}, _a)));
+        this.initializeNamespaces();
         if (!this.configServerUrl || !this.appId) {
             this.errorHandler("configServerUrl and appId are required");
+            return;
+        }
+        if (this.fetchCacheInterval && this.fetchCacheInterval < 1 * 30e3) {
+            this.errorHandler("fetchCacheInterval too short");
             return;
         }
         // high real-time capability
@@ -75,29 +91,54 @@ var Apollo = /** @class */ (function () {
         if (this.listenOnNotification && this.notifications) {
             setTimeout(function () { return _this.startListenOnNotification(); }, 10e3);
         }
+        // load from file
+        this.loadFromConfigFile();
+        // fetch DB configs from Apollo server at once
+        setTimeout(function () { return _this.fetchKnownNamespaceFromDB(); }, 1e3);
         // low-level real-time capability
-        // fetch cached configs from Apollo server
-        // fetch once immediately
-        this.fetchKnownNamespaceFromDB();
         // then fetch every 5 minutes
-        setInterval(this.fetchKnownNamespaceFromCache, 5 * 60e3);
+        setInterval(this.fetchKnownNamespaceFromCache.bind(this), this.fetchCacheInterval);
     }
     /**
      * fetch single config.
      */
     Apollo.prototype.fetchConfig = function (_a) {
         var key = _a.key, _b = _a.namespace, namespace = _b === void 0 ? "application" : _b;
-        return _.get(this.localCachedConfigs, namespace + "." + key, "");
+        return __awaiter(this, void 0, Bluebird, function () {
+            return __generator(this, function (_c) {
+                switch (_c.label) {
+                    case 0:
+                        if (!!this.releaseKeys[namespace]) return [3 /*break*/, 2];
+                        return [4 /*yield*/, sleep(5000)];
+                    case 1:
+                        _c.sent();
+                        _c.label = 2;
+                    case 2: return [2 /*return*/, _.get(this.localCachedConfigs, namespace + "." + key, "")];
+                }
+            });
+        });
     };
     /**
      * fetch multiple configs.
      */
     Apollo.prototype.fetchConfigs = function (_a) {
         var keys = _a.keys, _b = _a.namespace, namespace = _b === void 0 ? "application" : _b;
-        if (!_.isArray(keys)) {
-            this.errorHandler("kyes should be array type");
-        }
-        return _.pick(_.get(this.localCachedConfigs, "" + namespace, {}), keys);
+        return __awaiter(this, void 0, Bluebird, function () {
+            return __generator(this, function (_c) {
+                switch (_c.label) {
+                    case 0:
+                        if (!_.isArray(keys)) {
+                            this.errorHandler("kyes should be array type");
+                        }
+                        if (!!this.releaseKeys[namespace]) return [3 /*break*/, 2];
+                        return [4 /*yield*/, sleep(5000)];
+                    case 1:
+                        _c.sent();
+                        _c.label = 2;
+                    case 2: return [2 /*return*/, _.pick(_.get(this.localCachedConfigs, "" + namespace, {}), keys)];
+                }
+            });
+        });
     };
     /**
      * refresh specific namepace's config partially or completely
@@ -110,39 +151,117 @@ var Apollo = /** @class */ (function () {
     Apollo.prototype.refreshConfigs = function (_a) {
         var configs = _a.configs, _b = _a.namespace, namespace = _b === void 0 ? "application" : _b;
         try {
-            if (!namespace || !this.namespaces.includes(namespace)) {
+            if (!namespace || !this.namespaces.has(namespace)) {
                 throw new Error("no such namespace");
             }
             this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], configs);
+            this.saveConfigFile();
             return true;
         }
         catch (err) {
             return false;
         }
     };
+    Apollo.prototype.readFromConfigFile = function () {
+        try {
+            var jsonFile = fsAsync.readFileSync(this.cachedConfigFilePath + this.cachedConfigFileName, "utf8");
+            return JSON.parse(jsonFile);
+        }
+        catch (err) {
+            this.logger.error(err);
+            return null;
+        }
+    };
+    /**
+     * update and save config file.
+     *
+     * config file format:
+     * {
+     *   appId,
+     *   cluster,
+     *   config: {
+     *     namespace1: {
+     *     }
+     *     namespace2: {
+     *     }
+     *   },
+     *   notifications,
+     * }
+     */
+    Apollo.prototype.saveConfigFile = function () {
+        return __awaiter(this, void 0, Bluebird, function () {
+            var fileExist, configsToWriteDown, oldConfigs, configStringToWriteDown, err_1;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        _a.trys.push([0, 2, , 3]);
+                        fileExist = fsAsync.existsSync(this.cachedConfigFilePath + this.cachedConfigFileName);
+                        configsToWriteDown = this.localCachedConfigs;
+                        // try to update base on current appId and cluster
+                        if (fileExist) {
+                            oldConfigs = this.readFromConfigFile();
+                            if (oldConfigs && oldConfigs.appId === this.appId
+                                && oldConfigs.cluster === this.cluster && oldConfigs.configServerUrl === this.configServerUrl) {
+                                configsToWriteDown = Object.assign(oldConfigs.configs, configsToWriteDown);
+                            }
+                        }
+                        configStringToWriteDown = JSON.stringify({
+                            appId: this.appId,
+                            cluster: this.cluster,
+                            configServerUrl: this.configServerUrl,
+                            configs: configsToWriteDown,
+                            notifications: this.notifications,
+                            releaseKeys: this.releaseKeys,
+                        });
+                        return [4 /*yield*/, fsAsync.writeFileAsync(this.cachedConfigFilePath + this.cachedConfigFileName, configStringToWriteDown)];
+                    case 1:
+                        _a.sent();
+                        return [2 /*return*/, true];
+                    case 2:
+                        err_1 = _a.sent();
+                        this.logger.error(err_1);
+                        return [2 /*return*/, false];
+                    case 3: return [2 /*return*/];
+                }
+            });
+        });
+    };
+    Apollo.prototype.loadFromConfigFile = function () {
+        var oldInfos = this.readFromConfigFile();
+        if (!oldInfos) {
+            this.logger.error("load configs from configs failed");
+            return;
+        }
+        else if (oldInfos.appId !== this.appId || oldInfos.cluster !== this.cluster
+            || oldInfos.configServerUrl !== this.configServerUrl) {
+            this.logger.error("Ain't find no matched config files");
+            return;
+        }
+        else {
+            this.localCachedConfigs = oldInfos.configs;
+            this.releaseKeys = oldInfos.releaseKeys;
+            this.notifications = Object.assign(this.notifications, oldInfos.notifications);
+        }
+    };
     /**
      * this function born to do some initialization operations.
      *
-     * i. maintain configs that passed in by constructor.
-     * ii. set namespaces property.
-     * iii. initialize notifications.
-     * iv. initialize releaseKeys.
-     *
+     * i. maintain namespaces that passed in by constructor or come from configs.
+     * ii. initialize notifications.
+     * iii. initialize releaseKeys.
      */
-    Apollo.prototype.initializeWithConfigs = function (currentConfigs) {
-        var _a;
+    Apollo.prototype.initializeNamespaces = function () {
         var _this = this;
-        if (!currentConfigs || _.isEmpty(currentConfigs)) {
-            this.localCachedConfigs = (_a = {},
-                _a[this.defaultNamespace] = {},
-                _a);
-        }
-        else {
-            this.localCachedConfigs = currentConfigs;
-        }
-        this.namespaces = Object.keys(this.localCachedConfigs);
+        Object.keys(this.localCachedConfigs).forEach(function (key) {
+            _this.namespaces.add(key);
+        });
+        this.namespaces.forEach(function (namespace) {
+            if (!_this.localCachedConfigs[namespace]) {
+                _this.localCachedConfigs[namespace] = {};
+            }
+        });
         this.namespaces.forEach(function (key) {
-            _this.notifications[key] = 0;
+            _this.notifications[key] = -1;
         });
         this.namespaces.forEach(function (key) {
             _this.releaseKeys[key] = "";
@@ -150,7 +269,7 @@ var Apollo = /** @class */ (function () {
     };
     /**
      * Long polling method
-     * recursively requests Apollo server's notification API
+     * recursively request Apollo server's notification API
      * hangs 60 seconds to simulate an keep-alive connection.
      * if any response get back, it compares result, basically notificationId with local
      * depends on which it fetch latest version of configs directly from Apollo DB
@@ -160,7 +279,7 @@ var Apollo = /** @class */ (function () {
     Apollo.prototype.startListenOnNotification = function (retryTimes) {
         if (retryTimes === void 0) { retryTimes = 0; }
         return __awaiter(this, void 0, Bluebird, function () {
-            var notificationsForApollo, response, body, statusCode, needToRefetchedNamespaces_1, err_1;
+            var notifications, response, body, statusCode, needToRefetchedNamespaces_1, err_2;
             var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
@@ -174,23 +293,26 @@ var Apollo = /** @class */ (function () {
                         _a.sent();
                         _a.label = 2;
                     case 2:
-                        _a.trys.push([2, 6, , 7]);
-                        notificationsForApollo = Object.keys(this.notifications).map(function (namespace) {
+                        _a.trys.push([2, 11, , 13]);
+                        notifications = encodeURIComponent(JSON.stringify(Object.keys(this.notifications).map(function (namespace) {
                             return { namespaceName: namespace, notificationId: _this.notifications[namespace] };
-                        });
+                        })));
                         return [4 /*yield*/, requestAsync.getAsync({
                                 json: true,
-                                timeout: 65,
-                                uri: this.configServerUrl + "/notifications/v2?\n          appId=" + this.appId + "&cluster=" + this.cluster + "&notifications=" + notificationsForApollo,
+                                timeout: 65 * 1e3,
+                                uri: this.configServerUrl + "/notifications/v2?" +
+                                    ("appId=" + this.appId + "&cluster=" + this.cluster + "&notifications=" + notifications),
                             })];
                     case 3:
                         response = _a.sent();
                         body = response.body, statusCode = response.statusCode;
-                        if (statusCode === 304) {
-                            // nothing updated, won't update.
-                            return [2 /*return*/, this.startListenOnNotification(0)];
-                        }
-                        if (!(body && statusCode === 200)) return [3 /*break*/, 5];
+                        if (!(statusCode === 304)) return [3 /*break*/, 5];
+                        return [4 /*yield*/, this.startListenOnNotification(0)];
+                    case 4: 
+                    // nothing updated, won't update.
+                    return [2 /*return*/, _a.sent()];
+                    case 5:
+                        if (!(body && statusCode === 200)) return [3 /*break*/, 9];
                         needToRefetchedNamespaces_1 = {};
                         body.forEach(function (remoteNotification) {
                             var internalNotificationId = _.get(_this.notifications, remoteNotification.namespaceName, 0);
@@ -210,15 +332,21 @@ var Apollo = /** @class */ (function () {
                                     }
                                 });
                             }); })];
-                    case 4:
-                        _a.sent();
-                        return [2 /*return*/, this.startListenOnNotification(0)];
-                    case 5: throw new Error();
                     case 6:
-                        err_1 = _a.sent();
-                        this.logger.error("error on notificaiotn response");
-                        return [2 /*return*/, this.startListenOnNotification(retryTimes += 1)];
-                    case 7: return [2 /*return*/];
+                        _a.sent();
+                        return [4 /*yield*/, this.saveConfigFile()];
+                    case 7:
+                        _a.sent();
+                        return [4 /*yield*/, this.startListenOnNotification(0)];
+                    case 8: return [2 /*return*/, _a.sent()];
+                    case 9: throw new Error("statusCode: " + statusCode + ", body: " + body);
+                    case 10: return [3 /*break*/, 13];
+                    case 11:
+                        err_2 = _a.sent();
+                        this.logger.error("error on notificaiotn response: , " + (err_2 || ""));
+                        return [4 /*yield*/, this.startListenOnNotification(retryTimes += 1)];
+                    case 12: return [2 /*return*/, _a.sent()];
+                    case 13: return [2 /*return*/];
                 }
             });
         });
@@ -229,25 +357,36 @@ var Apollo = /** @class */ (function () {
     Apollo.prototype.fetchConfigsFromCache = function (namespace) {
         if (namespace === void 0) { namespace = "application"; }
         return __awaiter(this, void 0, void 0, function () {
-            var uri, response, body, statusCode;
+            var uri, response, body, statusCode, err_3;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
                         uri = this.configServerUrl + "/configfiles/json/" + this.appId + "/" + this.cluster + "/" + namespace;
+                        _a.label = 1;
+                    case 1:
+                        _a.trys.push([1, 5, , 6]);
                         return [4 /*yield*/, requestAsync.getAsync({
                                 json: true,
                                 uri: uri,
                             })];
-                    case 1:
+                    case 2:
                         response = _a.sent();
                         body = response.body, statusCode = response.statusCode;
                         if (!body || statusCode > 200) {
                             return [2 /*return*/, this.errorHandler("error on fetching configs from cache")];
                         }
-                        if (body && typeof body === "object") {
-                            this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], body);
-                        }
-                        return [2 /*return*/];
+                        if (!(body && typeof body === "object")) return [3 /*break*/, 4];
+                        this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], body);
+                        return [4 /*yield*/, this.saveConfigFile()];
+                    case 3:
+                        _a.sent();
+                        _a.label = 4;
+                    case 4: return [3 /*break*/, 6];
+                    case 5:
+                        err_3 = _a.sent();
+                        this.logger.error("error on fetching config from cache response: , " + (err_3 || ""));
+                        return [3 /*break*/, 6];
+                    case 6: return [2 /*return*/];
                 }
             });
         });
@@ -279,22 +418,25 @@ var Apollo = /** @class */ (function () {
                         }
                         if (!body || statusCode > 200) {
                             // TODO: retry ?
-                            this.logger.error("error on response");
+                            this.logger.error("error on fetch from DB response: " + statusCode + " | " + body);
                         }
-                        if (body.appId === this.appId
+                        if (!(body.appId === this.appId
                             && body.cluster === this.cluster
-                            && body.namespaceName === namespace) {
-                            if (body.releaseKey) {
-                                this.releaseKeys[namespace] = body.releaseKey;
-                            }
-                            if (body.configurations) {
-                                this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], body.configurations);
-                            }
+                            && body.namespaceName === namespace)) return [3 /*break*/, 4];
+                        if (body.releaseKey) {
+                            this.releaseKeys[namespace] = body.releaseKey;
                         }
-                        else {
-                            this.errorHandler("mismatch fetching configs " + this.cluster + "-" + namespace);
-                        }
-                        return [2 /*return*/];
+                        if (!body.configurations) return [3 /*break*/, 3];
+                        this.localCachedConfigs[namespace] = Object.assign(this.localCachedConfigs[namespace], body.configurations);
+                        return [4 /*yield*/, this.saveConfigFile()];
+                    case 2:
+                        _a.sent();
+                        _a.label = 3;
+                    case 3: return [3 /*break*/, 5];
+                    case 4:
+                        this.errorHandler("mismatch fetching configs " + this.cluster + "-" + namespace);
+                        _a.label = 5;
+                    case 5: return [2 /*return*/];
                 }
             });
         });

@@ -3,6 +3,7 @@ const Apollo = require('../dist/index');
 const assert = require('assert');
 const nock = require('nock');
 const Bluebird = require('bluebird');
+const fs = Bluebird.promisifyAll(require('fs'));
 
 function sleep(ms) {
   return new Bluebird(resolve => {
@@ -10,10 +11,17 @@ function sleep(ms) {
   });
 }
 
-describe('test apollo', () => {
-  const configServerUrl = 'http://someconfig.com';
-  const appId = 'firstTest';
+function removeRelatedFile(appId) {
+  const defaultFilePath = `/tmp/${appId}-nodeApolloCachedConfig.json`;
+  if (fs.existsSync(defaultFilePath)) {
+    return fs.unlinkSync(defaultFilePath);
+  }
+}
 
+describe('test apollo', () => {
+  const configServerUrl = 'http://172.17.96.136:8080';
+  const appId = 'firstTest';
+  const getFilePath = (_appId) => { return `/tmp/${_appId}-nodeApolloCachedConfig.json` };
 
   beforeEach(async() => {
     nock.cleanAll();
@@ -22,7 +30,6 @@ describe('test apollo', () => {
     .persist()
     .get(`/configfiles/json/${appId}/default/application`)
     .reply(200, { test: false });
-
 
     nock(`${configServerUrl}`)
     .persist()
@@ -44,6 +51,7 @@ describe('test apollo', () => {
   });
 
   it('should get and cover config successfully', async () => {
+    removeRelatedFile(appId);
     const apollo = new Apollo({
       configServerUrl,
       appId: 'firstTest',
@@ -59,9 +67,11 @@ describe('test apollo', () => {
     await sleep(2000);
 
     assert.equal(apollo.localCachedConfigs.application.test, false);
+    removeRelatedFile(appId);
   });
 
   it('should get config', async () => {
+    removeRelatedFile(appId);
     const apollo = new Apollo({
       configServerUrl,
       appId: 'firstTest',
@@ -73,11 +83,14 @@ describe('test apollo', () => {
       listenOnNotification: false,
     });
 
-    const result = apollo.fetchConfig({ key: 'test' });
-    assert.equal(result, true);
+    assert.equal(apollo.localCachedConfigs.application.test, true);
+    const result = await apollo.fetchConfig({ key: 'test' });
+    assert.equal(result, false);
+    removeRelatedFile(appId);
   });
 
   it('should get configs', async () => {
+    removeRelatedFile(appId);
     const apollo = new Apollo({
       configServerUrl,
       appId: 'firstTest',
@@ -90,14 +103,17 @@ describe('test apollo', () => {
       listenOnNotification: false,
     });
 
-    const result = apollo.fetchConfigs({ keys: ['test', 'rabbit'] });
+    assert.equal(apollo.localCachedConfigs.application.test, true);
+    const result = await apollo.fetchConfigs({ keys: ['test', 'rabbit'] });
     assert.equal(typeof result, 'object');
-    assert.equal(result.test, true);
+    assert.equal(result.test, false);
     assert.equal(result.rabbit, 'payment');
+    removeRelatedFile(appId);
   });
 
 
   it('should refresh configs', async () => {
+    removeRelatedFile(appId);
     const apollo = new Apollo({
       configServerUrl,
       appId: 'firstTest',
@@ -110,11 +126,60 @@ describe('test apollo', () => {
       listenOnNotification: false,
     });
 
-    const result1 = apollo.refreshConfigs({ configs: { test: false, rabbit: 'carrots' } });
+    const result1 = await apollo.refreshConfigs({ configs: { test: false, rabbit: 'carrots' } });
     assert.equal(result1, true);
-    const result2 = apollo.fetchConfigs({ keys: ['test', 'rabbit'] });
+    const result2 = await apollo.fetchConfigs({ keys: ['test', 'rabbit'] });
     assert.equal(result2.test, false);
     assert.equal(result2.rabbit, 'carrots');
+
+    sleep(500);
+    const targetFile = await fs.readFileAsync(getFilePath(appId), 'utf8');
+
+    assert.equal(JSON.parse(targetFile).configs.application.rabbit, 'carrots');
+    removeRelatedFile(appId);
   });
 
+  it('test save configs into /tmp', async () => {
+    removeRelatedFile(appId);
+    const apollo = new Apollo({
+      configServerUrl,
+      appId: 'firstTest',
+      initialConfigs: {
+        application: {
+          test: true,
+        },
+      },
+      listenOnNotification: false,
+    });
+
+    await sleep(2000);
+
+    const targetFile = await fs.readFileAsync(getFilePath(appId), 'utf8');
+
+    assert.equal(JSON.parse(targetFile).configs.application.test, false);
+  });
+
+  it('test configs influenced by saved file', async () => {
+    const apollo = new Apollo({
+      configServerUrl,
+      appId: 'firstTest',
+      initialConfigs: {
+        application: {
+          test: true,
+        },
+      },
+      listenOnNotification: false,
+    });
+
+    await sleep(500);
+
+    assert.equal(apollo.localCachedConfigs.application.test, false);
+
+    await sleep(2000);
+
+    const targetFile = await fs.readFileAsync(getFilePath(appId), 'utf8');
+
+    assert.equal(JSON.parse(targetFile).configs.application.test, false);
+    removeRelatedFile(appId);
+  });
 });
