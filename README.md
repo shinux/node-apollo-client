@@ -19,10 +19,11 @@ Features:
 
 ```bash
 local configs object
-  \-+= fetch from Apollo cache at once
-     \-+= fetch from Apollo cache periodically (5 minutes)
-        \-+= subscribe notification and fetch from Apollo DB if release tag changed
-           \-+= update local configs by API
+  \-+= local cached config files
+    \-+= fetch from Apollo cache at once
+        \-+= fetch from Apollo cache periodically (5 minutes)
+            \-+= subscribe notification and fetch from Apollo DB if release tag changed
+            \-+= update local configs by API
 ```
 
 |                                               scene | influence | configs source                               |
@@ -48,13 +49,15 @@ const apollo = new Apollo({
   configServerUrl: 'your-config-server-url',
   appId: 'your-app-id',
   cluster: 'default', // default to `default`
+  namespaces: ['application'],  // default to `['application']`, this is the namespaces that you want to use or maintain.
   initialConfigs: {
     application: {  // this is default namespace name
       foo: 'Mars',
       bar: 'Jupiter'
     },
-  },
+  }, // optional
   listenOnNotification: true, // default to true
+  fetchCacheInterval: 5 * 60e3, // default to 5 minutes. can be customize but 30s or shorter time are not acceptable.
 });
 
 // fetch single config
