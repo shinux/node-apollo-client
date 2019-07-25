@@ -7,8 +7,11 @@ declare class Apollo {
       configServerUrl: string;
       appId: string | number;
       cluster?: string;
+      namespaces?: string[];
+      cachedConfigFilePath?: string;
       listenOnNotification?: boolean;
-      initialConfigs: { [key: string]: object };
+      initialConfigs?: { [key: string]: object };
+      fetchCacheInterval?: number;
     });
 
     public fetchConfig({ key, namespace }: { key: string, namespace?: string }): any;

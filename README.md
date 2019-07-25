@@ -13,7 +13,8 @@ node apollo client for Ctrip Apollo
 Features:
 
 1. implement all APIs described in [official documentation](https://github.com/ctripcorp/apollo/wiki/%E5%85%B6%E5%AE%83%E8%AF%AD%E8%A8%80%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%8E%A5%E5%85%A5%E6%8C%87%E5%8D%97)
-2. written in TypeScript and typing support
+2. high availability by caching configs in local files which simulate JAVA SDK does.
+3. written in TypeScript and typing support
 
 ## client logic and availability
 
@@ -58,6 +59,7 @@ const apollo = new Apollo({
   }, // optional
   listenOnNotification: true, // default to true
   fetchCacheInterval: 5 * 60e3, // default to 5 minutes. can be customize but 30s or shorter time are not acceptable.
+  cachedConfigFilePath: '/tmp/' // default to '/tmp/', cached configs path.
 });
 
 // fetch single config
