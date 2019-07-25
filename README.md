@@ -20,10 +20,10 @@ Features:
 ```bash
 local configs object
   \-+= local cached config files
-    \-+= fetch from Apollo cache at once
-        \-+= fetch from Apollo cache periodically (5 minutes)
-            \-+= subscribe notification and fetch from Apollo DB if release tag changed
-            \-+= update local configs by API
+    \-+= fetch from Apollo DB at once
+      \-+= fetch from Apollo cache periodically (default to 5 minutes)
+        \-+= subscribe notification and fetch from Apollo DB if release tag changed
+          \-+= update local configs by API
 ```
 
 |                                               scene | influence | configs source                               |
@@ -62,7 +62,7 @@ const apollo = new Apollo({
 
 // fetch single config
 apollo.fetchConfig({ key: 'foo' });
-// return false
+// return 'Mars'
 
 // fetch multiple configs
 apollo.fetchConfigs({ keys: [ 'foo', 'bar' ] });
