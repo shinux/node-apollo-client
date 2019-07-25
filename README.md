@@ -24,7 +24,7 @@ local configs object
     \-+= fetch from Apollo DB at once
       \-+= fetch from Apollo cache periodically (default to 5 minutes)
         \-+= subscribe notification and fetch from Apollo DB if release tag changed
-          \-+= update local configs by API
+          \-+= update local configs by API: refreshConfigs
 ```
 
 |                                               scene | influence | configs source                               |
