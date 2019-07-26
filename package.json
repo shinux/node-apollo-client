@@ -1,6 +1,6 @@
 {
   "name": "node-apollo-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "node apollo client for Ctrip Apollo",
   "main": "./dist/index.js",
   "scripts": {
