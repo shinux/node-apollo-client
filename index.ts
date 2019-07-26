@@ -304,6 +304,7 @@ class Apollo {
             needToRefetchedNamespaces[remoteNotification.namespaceName] = remoteNotification.notificationId;
           }
         });
+        this.logger.info("notification updated, start fetching new configs...");
         await Bluebird.map(Object.keys(needToRefetchedNamespaces), async (namespace) => {
           await this.fetchConfigsFromDB(namespace);
           // update notification is after fetching and updating configs successfully.
@@ -324,6 +325,7 @@ class Apollo {
    * fetch from Apollo's Redis
    */
   private async fetchConfigsFromCache(namespace: string = "application") {
+    this.logger.info("start fetching from apollo cache...");
     const uri: string = `${this.configServerUrl}/configfiles/json/${this.appId}/${this.cluster}/${namespace}`;
     try {
       const response: { body: object, statusCode: number } = await requestAsync.getAsync({
@@ -347,6 +349,7 @@ class Apollo {
    * fetch from Apollo's MySQL
    */
   private async fetchConfigsFromDB(namespace: string = "application") {
+    this.logger.info("start fetching from apollo DB...");
     let uri: string = `${this.configServerUrl}/configs/${this.appId}/${this.cluster}/${namespace}`;
     if (this.releaseKeys[namespace]) {
       uri += `?releaseKey=${this.releaseKeys[namespace]}`;

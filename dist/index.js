@@ -320,6 +320,7 @@ var Apollo = /** @class */ (function () {
                                 needToRefetchedNamespaces_1[remoteNotification.namespaceName] = remoteNotification.notificationId;
                             }
                         });
+                        this.logger.info("notification updated, start fetching new configs...");
                         return [4 /*yield*/, Bluebird.map(Object.keys(needToRefetchedNamespaces_1), function (namespace) { return __awaiter(_this, void 0, void 0, function () {
                                 return __generator(this, function (_a) {
                                     switch (_a.label) {
@@ -361,6 +362,7 @@ var Apollo = /** @class */ (function () {
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
+                        this.logger.info("start fetching from apollo cache...");
                         uri = this.configServerUrl + "/configfiles/json/" + this.appId + "/" + this.cluster + "/" + namespace;
                         _a.label = 1;
                     case 1:
@@ -401,6 +403,7 @@ var Apollo = /** @class */ (function () {
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
+                        this.logger.info("start fetching from apollo DB...");
                         uri = this.configServerUrl + "/configs/" + this.appId + "/" + this.cluster + "/" + namespace;
                         if (this.releaseKeys[namespace]) {
                             uri += "?releaseKey=" + this.releaseKeys[namespace];
