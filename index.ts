@@ -390,9 +390,13 @@ class Apollo {
    * concurrency: 5.
    */
   private async fetchKnownNamespaceFromCache() {
-    await Bluebird.map(this.namespaces, async (namespace) => {
-      await this.fetchConfigsFromCache(namespace);
-    }, { concurrency: 5 });
+    try {
+      await Bluebird.map(this.namespaces, async (namespace) => {
+        await this.fetchConfigsFromCache(namespace);
+      }, { concurrency: 5 });
+    } catch (err) {
+      this.logger.error(err);
+    }
   }
 
   /**
@@ -401,9 +405,13 @@ class Apollo {
    * concurrency: 5.
    */
   private async fetchKnownNamespaceFromDB() {
-    await Bluebird.map(this.namespaces, async (namespace) => {
-      await this.fetchConfigsFromDB(namespace);
-    }, { concurrency: 5 });
+    try {
+      await Bluebird.map(this.namespaces, async (namespace) => {
+        await this.fetchConfigsFromDB(namespace);
+      }, { concurrency: 5 });
+    } catch (err) {
+      this.logger.error(err);
+    }
   }
 
   private errorHandler(errorMessage: string) {
