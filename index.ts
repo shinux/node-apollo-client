@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as os from "os";
 
 import * as Bluebird from "bluebird";
 import * as _ from "lodash";
@@ -82,7 +83,7 @@ class Apollo {
     this.appId = _.get(appInfo, "appId", "");
     this.cluster = _.get(appInfo, "cluster", this.defaultCluster);
     this.cachedConfigFileName = this.appId + "-" + this.cachedConfigFileNameSuffix;
-    this.cachedConfigFilePath = _.get(appInfo, "cachedConfigFilePath", "/tmp/");
+    this.cachedConfigFilePath = _.get(appInfo, "cachedConfigFilePath", os.tmpdir() + "/");
     this.localCachedConfigs = _.get(appInfo, "initialConfigs", { [this.defaultNamespace]: {} });
     this.notifications = {};
     this.namespaces = new Set(_.get(appInfo, "namespaces", ["application"]));

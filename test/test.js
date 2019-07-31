@@ -1,8 +1,10 @@
+const os = require('os');
 
 const Apollo = require('../dist/index');
 const assert = require('assert');
 const nock = require('nock');
 const Bluebird = require('bluebird');
+
 const fs = Bluebird.promisifyAll(require('fs'));
 
 function sleep(ms) {
@@ -12,7 +14,7 @@ function sleep(ms) {
 }
 
 function removeRelatedFile(appId) {
-  const defaultFilePath = `/tmp/${appId}-nodeApolloCachedConfig.json`;
+  const defaultFilePath = os.tmpdir() + `/${appId}-nodeApolloCachedConfig.json`;
   if (fs.existsSync(defaultFilePath)) {
     return fs.unlinkSync(defaultFilePath);
   }
@@ -21,7 +23,7 @@ function removeRelatedFile(appId) {
 describe('test apollo', () => {
   const configServerUrl = 'http://172.17.96.136:8080';
   const appId = 'firstTest';
-  const getFilePath = (_appId) => { return `/tmp/${_appId}-nodeApolloCachedConfig.json` };
+  const getFilePath = (_appId) => { return os.tmpdir() + `/${_appId}-nodeApolloCachedConfig.json` };
 
   beforeEach(async() => {
     nock.cleanAll();

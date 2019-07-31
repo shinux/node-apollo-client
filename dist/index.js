@@ -36,6 +36,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 var fs = require("fs");
+var os = require("os");
 var Bluebird = require("bluebird");
 var _ = require("lodash");
 var request = require("request");
@@ -69,7 +70,7 @@ var Apollo = /** @class */ (function () {
         this.appId = _.get(appInfo, "appId", "");
         this.cluster = _.get(appInfo, "cluster", this.defaultCluster);
         this.cachedConfigFileName = this.appId + "-" + this.cachedConfigFileNameSuffix;
-        this.cachedConfigFilePath = _.get(appInfo, "cachedConfigFilePath", "/tmp/");
+        this.cachedConfigFilePath = _.get(appInfo, "cachedConfigFilePath", os.tmpdir() + "/");
         this.localCachedConfigs = _.get(appInfo, "initialConfigs", (_a = {}, _a[this.defaultNamespace] = {}, _a));
         this.notifications = {};
         this.namespaces = new Set(_.get(appInfo, "namespaces", ["application"]));

@@ -59,7 +59,7 @@ const apollo = new Apollo({
   }, // optional
   listenOnNotification: true, // default to true
   fetchCacheInterval: 5 * 60e3, // default to 5 minutes. can be customize but 30s or shorter time are not acceptable.
-  cachedConfigFilePath: '/tmp/' // default to '/tmp/', cached configs path.
+  cachedConfigFilePath: '/tmp/' // cached configs path, default to system's tmp directory, for linux it's '/tmp/'.
 });
 
 // fetch single config
