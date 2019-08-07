@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as os from "os";
+import * as path from "path";
 
 import * as Bluebird from "bluebird";
 import * as _ from "lodash";
@@ -83,7 +84,9 @@ class Apollo {
     this.appId = _.get(appInfo, "appId", "");
     this.cluster = _.get(appInfo, "cluster", this.defaultCluster);
     this.cachedConfigFileName = this.appId + "-" + this.cachedConfigFileNameSuffix;
-    this.cachedConfigFilePath = _.get(appInfo, "cachedConfigFilePath", os.tmpdir() + "/");
+    this.cachedConfigFilePath = path.join(
+      _.get(appInfo, "cachedConfigFilePath", os.tmpdir()),
+      this.cachedConfigFileName);
     this.localCachedConfigs = _.get(appInfo, "initialConfigs", { [this.defaultNamespace]: {} });
     this.notifications = {};
     this.namespaces = new Set(_.get(appInfo, "namespaces", ["application"]));
@@ -168,7 +171,7 @@ class Apollo {
 
   private readFromConfigFile(): IFileConfigInterface | null {
     try {
-      const jsonFile = fsAsync.readFileSync(this.cachedConfigFilePath + this.cachedConfigFileName, "utf8");
+      const jsonFile = fsAsync.readFileSync(this.cachedConfigFilePath, "utf8");
       return JSON.parse(jsonFile);
     } catch (err) {
       this.logger.error(err);
@@ -194,7 +197,7 @@ class Apollo {
    */
   private async saveConfigFile(): Bluebird<boolean> {
     try {
-      const fileExist = fsAsync.existsSync(this.cachedConfigFilePath + this.cachedConfigFileName);
+      const fileExist = fsAsync.existsSync(this.cachedConfigFilePath);
       let configsToWriteDown = this.localCachedConfigs;
       // try to update base on current appId and cluster
       if (fileExist) {
@@ -212,7 +215,7 @@ class Apollo {
         notifications: this.notifications,
         releaseKeys: this.releaseKeys,
       });
-      await fsAsync.writeFileAsync(this.cachedConfigFilePath + this.cachedConfigFileName, configStringToWriteDown);
+      await fsAsync.writeFileAsync(this.cachedConfigFilePath, configStringToWriteDown);
       return true;
     } catch (err) {
       this.logger.error(err);
@@ -223,7 +226,7 @@ class Apollo {
   private loadFromConfigFile() {
     const oldInfos = this.readFromConfigFile();
     if (!oldInfos) {
-      this.logger.error("load configs from configs failed");
+      this.logger.error("load configs from config files failed");
       return;
     } else if (oldInfos.appId !== this.appId || oldInfos.cluster !== this.cluster
       || oldInfos.configServerUrl !== this.configServerUrl) {
@@ -264,6 +267,41 @@ class Apollo {
     });
   }
 
+  private async requestNotification() {
+    const notifications = encodeURIComponent(JSON.stringify(Object.keys(this.notifications).map((namespace) => {
+      return { namespaceName: namespace, notificationId: this.notifications[namespace] };
+    })));
+    const response
+      : { body: INotificationResponseItem[], statusCode: number } = await requestAsync.getAsync({
+      json: true,
+      timeout: 65 * 1e3,
+      uri: `${this.configServerUrl}/notifications/v2?` +
+        `appId=${this.appId}&cluster=${this.cluster}&notifications=${notifications}`,
+    });
+    const { body, statusCode } = response;
+    if (statusCode === 304) {
+      // nothing updated, won't update.
+      return;
+    }
+    if (body && statusCode === 200) {
+      const needToRefetchedNamespaces: { [key: string]: number } = {};
+      body.forEach((remoteNotification) => {
+        const internalNotificationId: number = _.get(this.notifications, remoteNotification.namespaceName, 0);
+        if (internalNotificationId !== remoteNotification.notificationId) {
+          needToRefetchedNamespaces[remoteNotification.namespaceName] = remoteNotification.notificationId;
+        }
+      });
+      await Bluebird.map(Object.keys(needToRefetchedNamespaces), async (namespace) => {
+        await this.fetchConfigsFromDB(namespace);
+        // update notification is after fetching and updating configs successfully.
+        this.notifications[namespace] = needToRefetchedNamespaces[namespace];
+      });
+      await this.saveConfigFile();
+    } else {
+      throw new Error(`statusCode: ${statusCode}, body: ${body}`);
+    }
+  }
+
   /**
    * Long polling method
    * recursively request Apollo server's notification API
@@ -273,52 +311,26 @@ class Apollo {
    *
    * then repeat it self.
    */
-  private async startListenOnNotification(retryTimes: number = 0): Bluebird<any> {
+  private async startListenOnNotification(): Bluebird<any> {
     if (!this.listenOnNotification) {
       return;
     }
-    // delay 10 seonds after failure
+    let retryTimes = 0;
+    while (this.listenOnNotification) {
+      // delay 10 seonds after failure
+      if (retryTimes >= 5) {
+        await sleep(10e3);
+      }
+      try {
+        await this.requestNotification();
+        retryTimes = 0;
+      } catch (err) {
+        this.logger.error(`error on notificaiotn response: , ${err || ""}`);
+        retryTimes += 1;
+      }
+    }
     if (retryTimes > 0) {
       await sleep(10e3);
-    }
-    try {
-      const notifications = encodeURIComponent(JSON.stringify(Object.keys(this.notifications).map((namespace) => {
-        return { namespaceName: namespace, notificationId: this.notifications[namespace] };
-      })));
-      const response
-        : { body: INotificationResponseItem[], statusCode: number } = await requestAsync.getAsync({
-        json: true,
-        timeout: 65 * 1e3,
-        uri: `${this.configServerUrl}/notifications/v2?` +
-          `appId=${this.appId}&cluster=${this.cluster}&notifications=${notifications}`,
-      });
-      const { body, statusCode } = response;
-      if (statusCode === 304) {
-        // nothing updated, won't update.
-        return await this.startListenOnNotification(0);
-      }
-      if (body && statusCode === 200) {
-        const needToRefetchedNamespaces: { [key: string]: number } = {};
-        body.forEach((remoteNotification) => {
-          const internalNotificationId: number = _.get(this.notifications, remoteNotification.namespaceName, 0);
-          if (internalNotificationId !== remoteNotification.notificationId) {
-            needToRefetchedNamespaces[remoteNotification.namespaceName] = remoteNotification.notificationId;
-          }
-        });
-        this.logger.info("notification updated, start fetching new configs...");
-        await Bluebird.map(Object.keys(needToRefetchedNamespaces), async (namespace) => {
-          await this.fetchConfigsFromDB(namespace);
-          // update notification is after fetching and updating configs successfully.
-          this.notifications[namespace] = needToRefetchedNamespaces[namespace];
-        });
-        await this.saveConfigFile();
-        return await this.startListenOnNotification(0);
-      } else {
-        throw new Error(`statusCode: ${statusCode}, body: ${body}`);
-      }
-    } catch (err) {
-      this.logger.error(`error on notificaiotn response: , ${err || ""}`);
-      return await this.startListenOnNotification(retryTimes += 1);
     }
   }
 

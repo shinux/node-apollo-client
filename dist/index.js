@@ -37,6 +37,7 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 Object.defineProperty(exports, "__esModule", { value: true });
 var fs = require("fs");
 var os = require("os");
+var path = require("path");
 var Bluebird = require("bluebird");
 var _ = require("lodash");
 var request = require("request");
@@ -70,7 +71,7 @@ var Apollo = /** @class */ (function () {
         this.appId = _.get(appInfo, "appId", "");
         this.cluster = _.get(appInfo, "cluster", this.defaultCluster);
         this.cachedConfigFileName = this.appId + "-" + this.cachedConfigFileNameSuffix;
-        this.cachedConfigFilePath = _.get(appInfo, "cachedConfigFilePath", os.tmpdir() + "/");
+        this.cachedConfigFilePath = path.join(_.get(appInfo, "cachedConfigFilePath", os.tmpdir()), this.cachedConfigFileName);
         this.localCachedConfigs = _.get(appInfo, "initialConfigs", (_a = {}, _a[this.defaultNamespace] = {}, _a));
         this.notifications = {};
         this.namespaces = new Set(_.get(appInfo, "namespaces", ["application"]));
@@ -165,7 +166,7 @@ var Apollo = /** @class */ (function () {
     };
     Apollo.prototype.readFromConfigFile = function () {
         try {
-            var jsonFile = fsAsync.readFileSync(this.cachedConfigFilePath + this.cachedConfigFileName, "utf8");
+            var jsonFile = fsAsync.readFileSync(this.cachedConfigFilePath, "utf8");
             return JSON.parse(jsonFile);
         }
         catch (err) {
@@ -196,7 +197,7 @@ var Apollo = /** @class */ (function () {
                 switch (_a.label) {
                     case 0:
                         _a.trys.push([0, 2, , 3]);
-                        fileExist = fsAsync.existsSync(this.cachedConfigFilePath + this.cachedConfigFileName);
+                        fileExist = fsAsync.existsSync(this.cachedConfigFilePath);
                         configsToWriteDown = this.localCachedConfigs;
                         // try to update base on current appId and cluster
                         if (fileExist) {
@@ -214,7 +215,7 @@ var Apollo = /** @class */ (function () {
                             notifications: this.notifications,
                             releaseKeys: this.releaseKeys,
                         });
-                        return [4 /*yield*/, fsAsync.writeFileAsync(this.cachedConfigFilePath + this.cachedConfigFileName, configStringToWriteDown)];
+                        return [4 /*yield*/, fsAsync.writeFileAsync(this.cachedConfigFilePath, configStringToWriteDown)];
                     case 1:
                         _a.sent();
                         return [2 /*return*/, true];
@@ -230,7 +231,7 @@ var Apollo = /** @class */ (function () {
     Apollo.prototype.loadFromConfigFile = function () {
         var oldInfos = this.readFromConfigFile();
         if (!oldInfos) {
-            this.logger.error("load configs from configs failed");
+            this.logger.error("load configs from config files failed");
             return;
         }
         else if (oldInfos.appId !== this.appId || oldInfos.cluster !== this.cluster
@@ -268,33 +269,13 @@ var Apollo = /** @class */ (function () {
             _this.releaseKeys[key] = "";
         });
     };
-    /**
-     * Long polling method
-     * recursively request Apollo server's notification API
-     * hangs 60 seconds to simulate an keep-alive connection.
-     * if any response get back, it compares result, basically notificationId with local
-     * depends on which it fetch latest version of configs directly from Apollo DB
-     *
-     * then repeat it self.
-     */
-    Apollo.prototype.startListenOnNotification = function (retryTimes) {
-        if (retryTimes === void 0) { retryTimes = 0; }
-        return __awaiter(this, void 0, Bluebird, function () {
-            var notifications, response, body, statusCode, needToRefetchedNamespaces_1, err_2;
+    Apollo.prototype.requestNotification = function () {
+        return __awaiter(this, void 0, void 0, function () {
+            var notifications, response, body, statusCode, needToRefetchedNamespaces_1;
             var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        if (!this.listenOnNotification) {
-                            return [2 /*return*/];
-                        }
-                        if (!(retryTimes > 0)) return [3 /*break*/, 2];
-                        return [4 /*yield*/, sleep(10e3)];
-                    case 1:
-                        _a.sent();
-                        _a.label = 2;
-                    case 2:
-                        _a.trys.push([2, 11, , 13]);
                         notifications = encodeURIComponent(JSON.stringify(Object.keys(this.notifications).map(function (namespace) {
                             return { namespaceName: namespace, notificationId: _this.notifications[namespace] };
                         })));
@@ -304,16 +285,14 @@ var Apollo = /** @class */ (function () {
                                 uri: this.configServerUrl + "/notifications/v2?" +
                                     ("appId=" + this.appId + "&cluster=" + this.cluster + "&notifications=" + notifications),
                             })];
-                    case 3:
+                    case 1:
                         response = _a.sent();
                         body = response.body, statusCode = response.statusCode;
-                        if (!(statusCode === 304)) return [3 /*break*/, 5];
-                        return [4 /*yield*/, this.startListenOnNotification(0)];
-                    case 4: 
-                    // nothing updated, won't update.
-                    return [2 /*return*/, _a.sent()];
-                    case 5:
-                        if (!(body && statusCode === 200)) return [3 /*break*/, 9];
+                        if (statusCode === 304) {
+                            // nothing updated, won't update.
+                            return [2 /*return*/];
+                        }
+                        if (!(body && statusCode === 200)) return [3 /*break*/, 4];
                         needToRefetchedNamespaces_1 = {};
                         body.forEach(function (remoteNotification) {
                             var internalNotificationId = _.get(_this.notifications, remoteNotification.namespaceName, 0);
@@ -321,7 +300,6 @@ var Apollo = /** @class */ (function () {
                                 needToRefetchedNamespaces_1[remoteNotification.namespaceName] = remoteNotification.notificationId;
                             }
                         });
-                        this.logger.info("notification updated, start fetching new configs...");
                         return [4 /*yield*/, Bluebird.map(Object.keys(needToRefetchedNamespaces_1), function (namespace) { return __awaiter(_this, void 0, void 0, function () {
                                 return __generator(this, function (_a) {
                                     switch (_a.label) {
@@ -334,21 +312,65 @@ var Apollo = /** @class */ (function () {
                                     }
                                 });
                             }); })];
-                    case 6:
+                    case 2:
                         _a.sent();
                         return [4 /*yield*/, this.saveConfigFile()];
-                    case 7:
+                    case 3:
                         _a.sent();
-                        return [4 /*yield*/, this.startListenOnNotification(0)];
-                    case 8: return [2 /*return*/, _a.sent()];
-                    case 9: throw new Error("statusCode: " + statusCode + ", body: " + body);
-                    case 10: return [3 /*break*/, 13];
-                    case 11:
+                        return [3 /*break*/, 5];
+                    case 4: throw new Error("statusCode: " + statusCode + ", body: " + body);
+                    case 5: return [2 /*return*/];
+                }
+            });
+        });
+    };
+    /**
+     * Long polling method
+     * recursively request Apollo server's notification API
+     * hangs 60 seconds to simulate an keep-alive connection.
+     * if any response get back, it compares result, basically notificationId with local
+     * depends on which it fetch latest version of configs directly from Apollo DB
+     *
+     * then repeat it self.
+     */
+    Apollo.prototype.startListenOnNotification = function () {
+        return __awaiter(this, void 0, Bluebird, function () {
+            var retryTimes, err_2;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        if (!this.listenOnNotification) {
+                            return [2 /*return*/];
+                        }
+                        retryTimes = 0;
+                        _a.label = 1;
+                    case 1:
+                        if (!this.listenOnNotification) return [3 /*break*/, 7];
+                        if (!(retryTimes >= 5)) return [3 /*break*/, 3];
+                        return [4 /*yield*/, sleep(10e3)];
+                    case 2:
+                        _a.sent();
+                        _a.label = 3;
+                    case 3:
+                        _a.trys.push([3, 5, , 6]);
+                        return [4 /*yield*/, this.requestNotification()];
+                    case 4:
+                        _a.sent();
+                        retryTimes = 0;
+                        return [3 /*break*/, 6];
+                    case 5:
                         err_2 = _a.sent();
                         this.logger.error("error on notificaiotn response: , " + (err_2 || ""));
-                        return [4 /*yield*/, this.startListenOnNotification(retryTimes += 1)];
-                    case 12: return [2 /*return*/, _a.sent()];
-                    case 13: return [2 /*return*/];
+                        retryTimes += 1;
+                        return [3 /*break*/, 6];
+                    case 6: return [3 /*break*/, 1];
+                    case 7:
+                        if (!(retryTimes > 0)) return [3 /*break*/, 9];
+                        return [4 /*yield*/, sleep(10e3)];
+                    case 8:
+                        _a.sent();
+                        _a.label = 9;
+                    case 9: return [2 /*return*/];
                 }
             });
         });
