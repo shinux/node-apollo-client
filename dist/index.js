@@ -115,7 +115,7 @@ var Apollo = /** @class */ (function () {
                     case 1:
                         _c.sent();
                         _c.label = 2;
-                    case 2: return [2 /*return*/, _.get(this.localCachedConfigs, namespace + "." + key, "")];
+                    case 2: return [2 /*return*/, _.get(this.localCachedConfigs, [namespace, key], "")];
                 }
             });
         });
