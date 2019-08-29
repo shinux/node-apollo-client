@@ -131,7 +131,7 @@ class Apollo {
     if (!this.releaseKeys[namespace]) {
       await sleep(5000);
     }
-    return _.get(this.localCachedConfigs, `${namespace}.${key}`, "");
+    return _.get(this.localCachedConfigs, [ namespace, key ], "");
   }
 
   /**
