@@ -13,7 +13,7 @@ node apollo client for Ctrip Apollo
 Features:
 
 1. implement all APIs described in [official documentation](https://github.com/ctripcorp/apollo/wiki/%E5%85%B6%E5%AE%83%E8%AF%AD%E8%A8%80%E5%AE%A2%E6%88%B7%E7%AB%AF%E6%8E%A5%E5%85%A5%E6%8C%87%E5%8D%97)
-2. high availability by caching configs in local files which simulate JAVA SDK does.
+2. high availability by caching configs in local files which simulate JAVA SDK.
 3. written in TypeScript and typing support
 4. naturally async await function calling, no event or callback mixed-in.
 
@@ -28,12 +28,12 @@ local configs object
           \-+= update local configs by API: refreshConfigs
 ```
 
-|                                               scene | influence | configs source                               |
+|                                               scene |     impact| configs source                               |
 | --------------------------------------------------: | --------- | -------------------------------------------- |
-|                failed to connect apollo at begining | x         | use local configs directly                   |
-|                            failed to connect apollo | x         | use cached apollo configs                    |
+|                failed to connect apollo at begining | x         | load local configs directly                  |
+|                            failed to connect apollo | x         | load cached apollo configs                   |
 | failed to connect apollo and wish to update configs | x         | update cached configs temporarily            |
-|                     failed to receive notifications | x         | fetch configs periodically fetch from apollo |
+|                     failed to receive notifications | x         | fetch configs periodically from apollo       |
 |                   failed to fetch from apollo cache | x         | subscribe notification and fetch from DB     |
 
 ## Usage
