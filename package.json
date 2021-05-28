@@ -19,7 +19,7 @@
   "homepage": "https://github.com/shinux/node-apollo-client#readme",
   "dependencies": {
     "bluebird": "3.5.5",
-    "lodash": "4.17.19",
+    "lodash": ">=4.17.21",
     "request": "2.88.0"
   },
   "devDependencies": {
